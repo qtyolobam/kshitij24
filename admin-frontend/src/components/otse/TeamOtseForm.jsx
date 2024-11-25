@@ -13,7 +13,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
-
+import { useToast } from "@/hooks/use-toast";
 const teamOtseSchema = z.object({
   registerer: z.object({
     firstName: z.string().min(1, "First name is required"),
@@ -38,7 +38,7 @@ const teamOtseSchema = z.object({
 
 export default function TeamOtseForm({ eventId, teamSize }) {
   const [isLoading, setIsLoading] = useState(false);
-
+  const { toast } = useToast();
   const form = useForm({
     resolver: zodResolver(teamOtseSchema),
     defaultValues: {

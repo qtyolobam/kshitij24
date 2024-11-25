@@ -455,7 +455,7 @@ function UsersTable() {
                     ? user.ccId
                     : user.ncpId
                     ? user.ncpId
-                    : "OTSE"}
+                    : user.otseId}
                 </td>
                 <td className="p-4 pl-6">
                   <div className="flex items-center gap-3">

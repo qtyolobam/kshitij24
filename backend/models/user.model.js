@@ -221,6 +221,11 @@ const UserThroughCCSchema = new mongoose.Schema({
 });
 
 const OtseUserSchema = new mongoose.Schema({
+  otseId: {
+    type: String,
+    required: true,
+    unique: true,
+  },
   firstName: {
     type: String,
     required: true,

@@ -191,6 +191,7 @@ exports.getUserDetailsShared = async (userId) => {
 
           data.registeredTeams.push({
             eventName: event.name,
+            registerer: user.ccId,
             teamMembers: teamMembers,
             npaMembers: npaMembers,
             confirmed: team.confirmed,
@@ -229,8 +230,8 @@ exports.getUserDetailsShared = async (userId) => {
       let teamEvents = await teamEvent.find({
         $or: [
           { "userRegistrations.registerer": userId },
-          { "userRegistrations.teamMembers": { $in: [userId] } },
-          { "userRegistrations.npaMembers": { $in: [userId] } },
+          { "userRegistrations.teamMembers": { $in: [userId.toString()] } },
+          { "userRegistrations.npaMembers": { $in: [userId.toString()] } },
         ],
       });
 
@@ -238,9 +239,9 @@ exports.getUserDetailsShared = async (userId) => {
         event.userRegistrations = event.userRegistrations.filter(
           (registration) => {
             return (
-              registration.registerer === userId ||
-              registration.teamMembers.includes(userId) ||
-              registration.npaMembers.includes(userId)
+              registration.registerer.toString() === userId.toString() ||
+              registration.teamMembers.includes(userId.toString()) ||
+              registration.npaMembers.includes(userId.toString())
             );
           }
         );
@@ -249,9 +250,16 @@ exports.getUserDetailsShared = async (userId) => {
 
       // Checking if the team user is registered for is verified
       let teamVerified = [];
+      let registerersIds = [];
+      let teamMembersNCPIDs = [];
+      let npaMembersNCPIDs = [];
       let wholeTeamVerified = true;
       for (let i = 0; i < teamEvents.length; i++) {
         const event = teamEvents[i];
+        const registerer = await ncpUser.findById(
+          event.userRegistrations[0].registerer
+        );
+        registerersIds.push(registerer.ncpId);
         // Checking if the team members are verified
         for (let j = 0; j < event.userRegistrations.length; j++) {
           for (
@@ -266,6 +274,7 @@ exports.getUserDetailsShared = async (userId) => {
               const user = await ncpUser.findById(
                 event.userRegistrations[j].teamMembers[k]
               );
+              teamMembersNCPIDs.push(user.ncpId);
               if (user.verified !== "VERIFIED") {
                 wholeTeamVerified = false;
                 break;
@@ -275,6 +284,7 @@ exports.getUserDetailsShared = async (userId) => {
         }
 
         let wholeTeamNPAVerified = true;
+
         // Checking if the NPA members are verified
         for (let j = 0; j < event.userRegistrations.length; j++) {
           for (
@@ -289,6 +299,7 @@ exports.getUserDetailsShared = async (userId) => {
               const user = await ncpUser.findById(
                 event.userRegistrations[j].npaMembers[k]
               );
+              npaMembersNCPIDs.push(user.ncpId);
               if (user.verified !== "VERIFIED") {
                 wholeTeamNPAVerified = false;
                 break;
@@ -382,23 +393,36 @@ exports.getUserDetailsShared = async (userId) => {
       // Formatting the team events
       for (let i = 0; i < teamEvents.length; i++) {
         const event = teamEvents[i];
-        if (
-          event.confirmedRegistrations.length > 0 &&
-          (event.confirmedRegistrations.registerer === userId ||
-            event.confirmedRegistrations.teamMembers.includes(userId) ||
-            event.confirmedRegistrations.npaMembers.includes(userId))
-        ) {
-          data.registeredTeams.push({
-            eventName: event.name,
-            confirmed: true,
-            verified: teamVerified[i],
-          });
-        } else {
-          data.registeredTeams.push({
-            eventName: event.name,
-            confirmed: false,
-            verified: teamVerified[i],
-          });
+        for (let j = 0; j < event.confirmedRegistrations.length; j++) {
+          if (
+            event.confirmedRegistrations.length > 0 &&
+            (event.confirmedRegistrations[j].registerer.toString() ===
+              userId.toString() ||
+              event.confirmedRegistrations[j].teamMembers.includes(
+                userId.toString()
+              ) ||
+              event.confirmedRegistrations[j].npaMembers.includes(
+                userId.toString()
+              ))
+          ) {
+            data.registeredTeams.push({
+              eventName: event.name,
+              confirmed: true,
+              verified: teamVerified[i],
+              teamMembers: teamMembersNCPIDs,
+              npaMembers: npaMembersNCPIDs,
+              registerer: registerersIds[i],
+            });
+          } else {
+            data.registeredTeams.push({
+              eventName: event.name,
+              confirmed: false,
+              verified: teamVerified[i],
+              teamMembers: teamMembersNCPIDs,
+              npaMembers: npaMembersNCPIDs,
+              registerer: registerersIds[i],
+            });
+          }
         }
       }
     }

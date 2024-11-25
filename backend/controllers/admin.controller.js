@@ -704,6 +704,128 @@ exports.getAllUsers = async (req, res) => {
       ncpUsers[i] = user;
     }
 
+    // Formatting the OTSE users
+    for (let i = 0; i < otseUsers.length; i++) {
+      const user = otseUsers[i];
+      const data = {
+        type: "OTSE",
+        _id: user._id,
+        otseId: user.otseId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        registeredSolos: [],
+        registeredTeams: [],
+      };
+
+      // Fetching solo events user is registered for
+      let soloEvents = await soloEvent.find({
+        $or: [
+          { confirmedRegistrations: { $in: [user._id.toString()] } }, // For regular events
+          { "confirmedRegistrations.0.male": user._id.toString() }, // For Mr. and Ms. Kshitij
+          { "confirmedRegistrations.0.female": user._id.toString() }, // For Mr. and Ms. Kshitij
+          { "confirmedRegistrations.0.lightWeight": user._id.toString() }, // For MMA
+          { "confirmedRegistrations.0.middleWeight": user._id.toString() }, // For MMA
+          { "confirmedRegistrations.0.heavyWeight": user._id.toString() }, // For MMA
+        ],
+      });
+
+      let teamEvents = await teamEvent.find({
+        $or: [
+          { "confirmedRegistrations.registerer": user._id.toString() },
+          {
+            "confirmedRegistrations.teamMembers": {
+              $in: [user._id.toString()],
+            },
+          },
+          {
+            "confirmedRegistrations.npaMembers": { $in: [user._id.toString()] },
+          },
+        ],
+      });
+
+      teamEvents = teamEvents.map((event) => {
+        event.confirmedRegistrations = event.confirmedRegistrations.filter(
+          (registration) => {
+            return (
+              registration.registerer.toString() === user._id.toString() ||
+              registration.teamMembers.includes(user._id.toString()) ||
+              registration.npaMembers.includes(user._id.toString())
+            );
+          }
+        );
+        return event;
+      });
+
+      // Formatting the solo events
+      for (let i = 0; i < soloEvents.length; i++) {
+        const event = soloEvents[i];
+        if (event.name === "Mr. and Ms. Kshitij") {
+          data.registeredSolos.push({
+            eventName: event.name,
+            confirmed: true,
+            sex: event.confirmedRegistrations[0].male.includes(
+              user._id.toString()
+            )
+              ? "male"
+              : "female",
+          });
+        } else if (event.name === "MMA") {
+          data.registeredSolos.push({
+            eventName: event.name,
+            confirmed: true,
+            weightCategory:
+              event.confirmedRegistrations[0].lightWeight.includes(
+                user._id.toString()
+              )
+                ? "lightWeight"
+                : event.confirmedRegistrations[0].middleWeight.includes(
+                    user._id.toString()
+                  )
+                ? "middleWeight"
+                : "heavyWeight",
+          });
+        } else {
+          data.registeredSolos.push({
+            eventName: event.name,
+            confirmed: true,
+          });
+        }
+      }
+
+      // Formatting the team events
+      for (let i = 0; i < teamEvents.length; i++) {
+        const event = teamEvents[i];
+        let teamMembers = [];
+        for (let j = 0; j < event.confirmedRegistrations.length; j++) {
+          for (
+            let k = 0;
+            k < event.confirmedRegistrations[j].teamMembers.length;
+            k++
+          ) {
+            const user = await otseUser.findById(
+              event.confirmedRegistrations[j].teamMembers[k]
+            );
+            if (user) {
+              teamMembers.push(user.otseId);
+            }
+          }
+        }
+        const registerer = await otseUser.findById(
+          event.confirmedRegistrations[0].registerer
+        );
+        data.registeredTeams.push({
+          eventName: event.name,
+          confirmed: true,
+          verified: "VERIFIED",
+          teamMembers,
+          npaMembers: [],
+          registerer: registerer.otseId,
+        });
+      }
+      otseUsers[i] = data;
+    }
+
     return res.status(200).json({
       message: "Users fetched successfully",
       data: [...ccUsers, ...ncpUsers, ...otseUsers],
@@ -2506,8 +2628,20 @@ exports.createOtseForSolo = async (req, res) => {
       $and: [{ email }, { phoneNumber }],
     });
     if (!newOtse) {
+      let newOtseId;
+      let isUnique = false;
+      while (!isUnique) {
+        const randomNum = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+        newOtseId = "OTSE" + randomNum;
+        const existingUser = await otseUser.findOne({ otseId: newOtseId });
+        if (!existingUser) {
+          isUnique = true;
+        }
+      }
+
       // Creating the otse
       newOtse = await otseUser.create({
+        otseId: newOtseId,
         firstName,
         lastName,
         email,
@@ -2523,7 +2657,7 @@ exports.createOtseForSolo = async (req, res) => {
             female: [],
           });
         }
-        event.confirmedRegistrations[0][sex].push(newOtse._id);
+        event.confirmedRegistrations[0][sex].push(newOtse._id.toString());
         event.slots[sex]--;
       } else {
         return res.status(400).json({ error: "No slots left for this event" });
@@ -2537,14 +2671,16 @@ exports.createOtseForSolo = async (req, res) => {
             heavyWeight: [],
           });
         }
-        event.confirmedRegistrations[0][weightCategory].push(newOtse._id);
+        event.confirmedRegistrations[0][weightCategory].push(
+          newOtse._id.toString()
+        );
         event.slots[weightCategory]--;
       } else {
         return res.status(400).json({ error: "No slots left for this event" });
       }
     } else {
       if (event.slots > 0) {
-        event.confirmedRegistrations.push(newOtse._id);
+        event.confirmedRegistrations.push(newOtse._id.toString());
         event.slots--;
       } else {
         return res.status(400).json({ error: "No slots left for this event" });
@@ -2622,7 +2758,20 @@ exports.createOtseForTeam = async (req, res) => {
       ],
     });
     if (!newRegisterer) {
-      newRegisterer = await otseUser.create(registerer);
+      let newOtseId;
+      let isUnique = false;
+      while (!isUnique) {
+        const randomNum = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+        newOtseId = "OTSE" + randomNum;
+        const existingUser = await otseUser.findOne({ otseId: newOtseId });
+        if (!existingUser) {
+          isUnique = true;
+        }
+      }
+      newRegisterer = await otseUser.create({
+        otseId: newOtseId,
+        ...registerer,
+      });
     }
 
     // Creating otse users for the team members
@@ -2635,18 +2784,34 @@ exports.createOtseForTeam = async (req, res) => {
         ],
       });
       if (!newTeamMember) {
-        newTeamMember = await otseUser.create(teamMembers[i]);
+        let newOtseId;
+        let isUnique = false;
+        while (!isUnique) {
+          const randomNum = Math.floor(Math.random() * (999 - 100 + 1)) + 100;
+          newOtseId = "OTSE" + randomNum;
+          const existingUser = await otseUser.findOne({ otseId: newOtseId });
+          if (!existingUser) {
+            isUnique = true;
+          }
+        }
+        newTeamMember = await otseUser.create({
+          otseId: newOtseId,
+          ...teamMembers[i],
+        });
       }
-      newTeamMembers.push(newTeamMember._id);
+      newTeamMembers.push(newTeamMember._id.toString());
     }
 
     // Creating the new team
     event.confirmedRegistrations.push({
       teamName,
-      registerer: newRegisterer._id,
+      registerer: newRegisterer._id.toString(),
       teamMembers: newTeamMembers,
       npaMembers: [],
     });
+
+    // Decreasing the event's slots
+    event.slots--;
 
     await event.save();
 
@@ -2725,9 +2890,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                   "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
                 );
             }
-            if (!user) {
-              user = await otseUser.findById(toBeFoundUser);
-            }
             if (user === null) {
               user = await ccUser.findById(toBeFoundUser).select("-password");
             }
@@ -2742,19 +2904,33 @@ exports.getUsersForConfirmation = async (req, res) => {
                 ))
             ) {
               formattedSoloEvents[i].confirmedUsers.male.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
               );
             } else {
               formattedSoloEvents[i].userRegistrations.male.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
+              );
+            }
+          }
+        }
+        // Is an otse user
+        if (soloEvents[i].confirmedRegistrations.length > 0) {
+          for (
+            let j = 0;
+            j < soloEvents[i].confirmedRegistrations[0].male.length;
+            j++
+          ) {
+            let toBeFoundUser = soloEvents[i].confirmedRegistrations[0].male[j];
+            let user = await otseUser.findById(toBeFoundUser);
+            if (
+              soloEvents[i].confirmedRegistrations &&
+              soloEvents[i].confirmedRegistrations.length > 0 &&
+              soloEvents[i].confirmedRegistrations[0].male.includes(
+                user._id.toString()
+              )
+            ) {
+              formattedSoloEvents[i].confirmedUsers.male.push(
+                user.otseId.toString()
               );
             }
           }
@@ -2795,9 +2971,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                   "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
                 );
             }
-            if (!user) {
-              user = await otseUser.findById(toBeFoundUser);
-            }
             if (user === null) {
               user = await ccUser.findById(toBeFoundUser).select("-password");
             }
@@ -2812,19 +2985,28 @@ exports.getUsersForConfirmation = async (req, res) => {
                 ))
             ) {
               formattedSoloEvents[i].confirmedUsers.female.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
               );
             } else {
               formattedSoloEvents[i].userRegistrations.female.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
+              );
+            }
+          }
+        }
+        // Is an otse user
+        if (soloEvents[i].confirmedRegistrations.length > 0) {
+          for (
+            let j = 0;
+            j < soloEvents[i].confirmedRegistrations[0].female.length;
+            j++
+          ) {
+            let toBeFoundUser =
+              soloEvents[i].confirmedRegistrations[0].female[j];
+            let user = await otseUser.findById(toBeFoundUser);
+            if (user) {
+              formattedSoloEvents[i].confirmedUsers.female.push(
+                user.otseId.toString()
               );
             }
           }
@@ -2888,9 +3070,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                   "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
                 );
             }
-            if (!user) {
-              user = await otseUser.findById(toBeFoundUser);
-            }
             if (user === null) {
               user = await ccUser.findById(toBeFoundUser).select("-password");
             }
@@ -2905,19 +3084,28 @@ exports.getUsersForConfirmation = async (req, res) => {
                 ))
             ) {
               formattedSoloEvents[i].confirmedUsers.lightWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
               );
             } else {
               formattedSoloEvents[i].userRegistrations.lightWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
+              );
+            }
+          }
+        }
+        // Is an otse user
+        if (soloEvents[i].confirmedRegistrations.length > 0) {
+          for (
+            let j = 0;
+            j < soloEvents[i].confirmedRegistrations[0].lightWeight.length;
+            j++
+          ) {
+            let toBeFoundUser =
+              soloEvents[i].confirmedRegistrations[0].lightWeight[j];
+            let user = await otseUser.findById(toBeFoundUser);
+            if (user) {
+              formattedSoloEvents[i].confirmedUsers.lightWeight.push(
+                user.otseId.toString()
               );
             }
           }
@@ -2959,9 +3147,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                   "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
                 );
             }
-            if (!user) {
-              user = await otseUser.findById(toBeFoundUser);
-            }
             if (user === null) {
               user = await ccUser.findById(toBeFoundUser).select("-password");
             }
@@ -2976,19 +3161,28 @@ exports.getUsersForConfirmation = async (req, res) => {
                 ))
             ) {
               formattedSoloEvents[i].confirmedUsers.middleWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
               );
             } else {
               formattedSoloEvents[i].userRegistrations.middleWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
+              );
+            }
+          }
+        }
+        // Is an otse user
+        if (soloEvents[i].confirmedRegistrations.length > 0) {
+          for (
+            let j = 0;
+            j < soloEvents[i].confirmedRegistrations[0].middleWeight.length;
+            j++
+          ) {
+            let toBeFoundUser =
+              soloEvents[i].confirmedRegistrations[0].middleWeight[j];
+            let user = await otseUser.findById(toBeFoundUser);
+            if (user) {
+              formattedSoloEvents[i].confirmedUsers.middleWeight.push(
+                user.otseId.toString()
               );
             }
           }
@@ -3028,9 +3222,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                   "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
                 );
             }
-            if (!user) {
-              user = await otseUser.findById(toBeFoundUser);
-            }
             if (user === null) {
               user = await ccUser.findById(toBeFoundUser).select("-password");
             }
@@ -3045,19 +3236,28 @@ exports.getUsersForConfirmation = async (req, res) => {
                 ))
             ) {
               formattedSoloEvents[i].confirmedUsers.heavyWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
               );
             } else {
               formattedSoloEvents[i].userRegistrations.heavyWeight.push(
-                user.ccId
-                  ? user.ccId
-                  : user.ncpId
-                  ? user.ncpId
-                  : user.firstName.toString + " " + user.lastName.toString
+                user.ccId ? user.ccId : user.ncpId
+              );
+            }
+          }
+        }
+        // Is an otse user
+        if (soloEvents[i].confirmedRegistrations.length > 0) {
+          for (
+            let j = 0;
+            j < soloEvents[i].confirmedRegistrations[0].heavyWeight.length;
+            j++
+          ) {
+            let toBeFoundUser =
+              soloEvents[i].confirmedRegistrations[0].heavyWeight[j];
+            let user = await otseUser.findById(toBeFoundUser);
+            if (user) {
+              formattedSoloEvents[i].confirmedUsers.heavyWeight.push(
+                user.otseId.toString()
               );
             }
           }
@@ -3099,9 +3299,6 @@ exports.getUsersForConfirmation = async (req, res) => {
                 "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
               );
           }
-          if (!user) {
-            user = await otseUser.findById(toBeFoundUser);
-          }
           if (user === null) {
             user = await ccUser.findById(toBeFoundUser).select("-password");
           }
@@ -3116,20 +3313,21 @@ exports.getUsersForConfirmation = async (req, res) => {
               ))
           ) {
             formattedSoloEvents[i].confirmedUsers.push(
-              user.ccId
-                ? user.ccId
-                : user.ncpId
-                ? user.ncpId
-                : user.firstName.toString + " " + user.lastName.toString
+              user.ccId ? user.ccId : user.ncpId
             );
           } else {
             formattedSoloEvents[i].userRegistrations.push(
-              user.ccId
-                ? user.ccId
-                : user.ncpId
-                ? user.ncpId
-                : user.firstName.toString + " " + user.lastName.toString
+              user.ccId ? user.ccId : user.ncpId
             );
+          }
+        }
+
+        // Is an otse user
+        for (let j = 0; j < soloEvents[i].confirmedRegistrations.length; j++) {
+          let toBeFoundUser = soloEvents[i].confirmedRegistrations[j];
+          let user = await otseUser.findById(toBeFoundUser);
+          if (user) {
+            formattedSoloEvents[i].confirmedUsers.push(user.otseId.toString());
           }
         }
       }
@@ -3162,11 +3360,6 @@ exports.getUsersForConfirmation = async (req, res) => {
               "-password -idProofARN -idProofURL -govtIdProofARN -govtIdProofURL -locked"
             );
         }
-        if (!user) {
-          user = await otseUser.findById(
-            teamEvents[i].userRegistrations[j].registerer
-          );
-        }
         if (user === null) {
           user = await ccUser
             .findById(teamEvents[i].userRegistrations[j].registerer)
@@ -3184,20 +3377,23 @@ exports.getUsersForConfirmation = async (req, res) => {
         ) {
           formattedTeamEvents[i].confirmedUsers.push({
             teamName: teamEvents[i].userRegistrations[j].teamName,
-            user: user.ccId
-              ? user.ccId
-              : user.ncpId
-              ? user.ncpId
-              : user.firstName.toString + " " + user.lastName.toString,
+            user: user.ccId ? user.ccId : user.ncpId,
           });
         } else {
           formattedTeamEvents[i].userRegistrations.push({
             teamName: teamEvents[i].userRegistrations[j].teamName,
-            user: user.ccId
-              ? user.ccId
-              : user.ncpId
-              ? user.ncpId
-              : user.firstName.toString + " " + user.lastName.toString,
+            user: user.ccId ? user.ccId : user.ncpId,
+          });
+        }
+      }
+      // Is an otse user
+      for (let j = 0; j < teamEvents[i].confirmedRegistrations.length; j++) {
+        let toBeFoundUser = teamEvents[i].confirmedRegistrations[j].registerer;
+        let user = await otseUser.findById(toBeFoundUser);
+        if (user) {
+          formattedTeamEvents[i].confirmedUsers.push({
+            teamName: teamEvents[i].confirmedRegistrations[j].teamName,
+            user: user.otseId.toString(),
           });
         }
       }

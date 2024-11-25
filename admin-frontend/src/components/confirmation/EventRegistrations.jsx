@@ -218,15 +218,11 @@ export default function EventRegistrations({
               render={({ field: { ref, ...field } }) => (
                 <FormItem>
                   <FormLabel className="text-white text-sm tracking-wide font-semibold">
-                    {event.type === "solo" ? "User ID" : "Team Name"}
+                    User ID
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder={
-                        event.type === "solo"
-                          ? "Enter User ID"
-                          : "Enter Team Name"
-                      }
+                      placeholder={"Enter User ID"}
                       className={`bg-[#09090B] outline-none border-[1px] 
                         ${
                           !isValidId && field.value
@@ -314,7 +310,7 @@ export default function EventRegistrations({
 
                   // Determine what to display
                   if (event.type === "team") {
-                    registrationId = registration.teamName;
+                    registrationId = `${registration.teamName} (${registration.user})`;
                   } else if (isCategoricalEvent) {
                     registrationId = `${registration.category}: ${registration.userId}`;
                   } else {
@@ -383,7 +379,7 @@ export default function EventRegistrations({
                       confirmedId = confirmed;
                     }
                   } else if (event.type === "team") {
-                    confirmedId = confirmed.teamName;
+                    confirmedId = `${confirmed.teamName} (${confirmed.user})`;
                   }
 
                   return (

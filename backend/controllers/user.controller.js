@@ -71,12 +71,12 @@ exports.getUser = async (req, res) => {
         let event =
           (await soloEvent
             .findOne({
-              $and: [{ _id: bets[i].eventId }, { deleted: { $ne: true } }],
+              $and: [{ _id: bets[i].eventId }],
             })
             .select("name")) ||
           (await teamEvent
-            .find({
-              $and: [{ _id: bets[i].eventId }, { deleted: { $ne: true } }],
+            .findOne({
+              $and: [{ _id: bets[i].eventId }],
             })
             .select("name"));
 
@@ -231,39 +231,22 @@ exports.getUser = async (req, res) => {
 
       // Fetching solo events user is registered for
       let soloEvents = await soloEvent.find({
-        userRegistrations: { $in: [userId] },
-      });
-
-      // Checking if the user is registered for Mr. and Ms. Kshitij
-      let MrAndMsKshitijEvent = await soloEvent.findOne({
         $or: [
-          { "userRegistrations.0.male": userId },
-          { "userRegistrations.0.female": userId },
+          { userRegistrations: { $in: [userId.toString()] } }, // For regular events
+          { "userRegistrations.0.male": userId.toString() }, // For Mr. and Ms. Kshitij
+          { "userRegistrations.0.female": userId.toString() }, // For Mr. and Ms. Kshitij
+          { "userRegistrations.0.lightWeight": userId.toString() }, // For MMA
+          { "userRegistrations.0.middleWeight": userId.toString() }, // For MMA
+          { "userRegistrations.0.heavyWeight": userId.toString() }, // For MMA
         ],
       });
-
-      // Checking if the user is registered for MMA
-      let MMAEvent = await soloEvent.findOne({
-        $or: [
-          { "userRegistrations.0.lightWeight": userId },
-          { "userRegistrations.0.middleWeight": userId },
-          { "userRegistrations.0.heavyWeight": userId },
-        ],
-      });
-
-      if (MrAndMsKshitijEvent) {
-        soloEvents = [...soloEvents, MrAndMsKshitijEvent];
-      }
-      if (MMAEvent) {
-        soloEvents = [...soloEvents, MMAEvent];
-      }
 
       // Fetching team events user is registered for
       let teamEvents = await teamEvent.find({
         $or: [
-          { "userRegistrations.registerer": userId },
-          { "userRegistrations.teamMembers": { $in: [userId] } },
-          { "userRegistrations.npaMembers": { $in: [userId] } },
+          { "userRegistrations.registerer": userId.toString() },
+          { "userRegistrations.teamMembers": { $in: [userId.toString()] } },
+          { "userRegistrations.npaMembers": { $in: [userId.toString()] } },
         ],
       });
 
@@ -271,9 +254,9 @@ exports.getUser = async (req, res) => {
         event.userRegistrations = event.userRegistrations.filter(
           (registration) => {
             return (
-              registration.registerer === userId ||
-              registration.teamMembers.includes(userId) ||
-              registration.npaMembers.includes(userId)
+              registration.registerer.toString() === userId.toString() ||
+              registration.teamMembers.includes(userId.toString()) ||
+              registration.npaMembers.includes(userId.toString())
             );
           }
         );
@@ -282,9 +265,16 @@ exports.getUser = async (req, res) => {
 
       // Checking if the team user is registered for is verified
       let teamVerified = [];
+      let registerersIds = [];
+      let teamMembersNCPIDs = [];
+      let npaMembersNCPIDs = [];
       let wholeTeamVerified = true;
       for (let i = 0; i < teamEvents.length; i++) {
         const event = teamEvents[i];
+        const registerer = await ncpUser.findById(
+          event.userRegistrations[0].registerer
+        );
+        registerersIds.push(registerer.ncpId);
         // Checking if the team members are verified
         for (let j = 0; j < event.userRegistrations.length; j++) {
           for (
@@ -292,13 +282,14 @@ exports.getUser = async (req, res) => {
             k < event.userRegistrations[j].teamMembers.length;
             k++
           ) {
-            if (event.userRegistrations[j].teamMembers[k] === "") {
+            if (event.userRegistrations[j].teamMembers[k].toString() === "") {
               wholeTeamVerified = false;
               break;
             } else {
               const user = await ncpUser.findById(
                 event.userRegistrations[j].teamMembers[k]
               );
+              teamMembersNCPIDs.push(user.ncpId);
               if (user.verified !== "VERIFIED") {
                 wholeTeamVerified = false;
                 break;
@@ -315,13 +306,14 @@ exports.getUser = async (req, res) => {
             k < event.userRegistrations[j].npaMembers.length;
             k++
           ) {
-            if (event.userRegistrations[j].npaMembers[k] === "") {
+            if (event.userRegistrations[j].npaMembers[k].toString() === "") {
               wholeTeamNPAVerified = false;
               break;
             } else {
               const user = await ncpUser.findById(
                 event.userRegistrations[j].npaMembers[k]
               );
+              npaMembersNCPIDs.push(user.ncpId);
               if (user.verified !== "VERIFIED") {
                 wholeTeamNPAVerified = false;
                 break;
@@ -415,23 +407,36 @@ exports.getUser = async (req, res) => {
       // Formatting the team events
       for (let i = 0; i < teamEvents.length; i++) {
         const event = teamEvents[i];
-        if (
-          event.confirmedRegistrations.length > 0 &&
-          (event.confirmedRegistrations.registerer === userId ||
-            event.confirmedRegistrations.teamMembers.includes(userId) ||
-            event.confirmedRegistrations.npaMembers.includes(userId))
-        ) {
-          data.registeredTeams.push({
-            eventName: event.name,
-            confirmed: true,
-            verified: teamVerified[i],
-          });
-        } else {
-          data.registeredTeams.push({
-            eventName: event.name,
-            confirmed: false,
-            verified: teamVerified[i],
-          });
+        for (let j = 0; j < event.confirmedRegistrations.length; j++) {
+          if (
+            event.confirmedRegistrations.length > 0 &&
+            (event.confirmedRegistrations[j].registerer.toString() ===
+              userId.toString() ||
+              event.confirmedRegistrations[j].teamMembers.includes(
+                userId.toString()
+              ) ||
+              event.confirmedRegistrations[j].npaMembers.includes(
+                userId.toString()
+              ))
+          ) {
+            data.registeredTeams.push({
+              eventName: event.name,
+              confirmed: true,
+              verified: teamVerified[i],
+              teamMembers: teamMembersNCPIDs,
+              npaMembers: npaMembersNCPIDs,
+              registerer: registerersIds[i],
+            });
+          } else {
+            data.registeredTeams.push({
+              eventName: event.name,
+              confirmed: false,
+              verified: teamVerified[i],
+              teamMembers: teamMembersNCPIDs,
+              npaMembers: npaMembersNCPIDs,
+              registerer: registerersIds[i],
+            });
+          }
         }
       }
     }
@@ -500,9 +505,9 @@ exports.getAllEvents = async (req, res) => {
       // Fetching the registered team events
       registeredTeamEvents = await teamEvent.find({
         $or: [
-          { "userRegistrations.registerer": userId },
-          { "userRegistrations.teamMembers": { $in: [userId] } },
-          { "userRegistrations.npaMembers": { $in: [userId] } },
+          { "userRegistrations.registerer": userId.toString() },
+          { "userRegistrations.teamMembers": { $in: [userId.toString()] } },
+          { "userRegistrations.npaMembers": { $in: [userId.toString()] } },
         ],
       });
       registeredTeamEvents = registeredTeamEvents.map((event) => event._id);
@@ -605,7 +610,7 @@ exports.registerForSoloEvent = async (req, res) => {
 
     // Finding the event
     const event = await soloEvent.findOne({
-      $and: [{ _id: eventId }, { deleted: { $ne: true } }],
+      $and: [{ _id: eventId.toString() }, { deleted: { $ne: true } }],
     });
     // Event not found
     if (!event) {
@@ -760,7 +765,7 @@ exports.registerForSoloEvent = async (req, res) => {
     if (!isNCP) {
       // Allowing dummy entries
       let newUserThroughCC = {
-        _id: "dummyRef: " + userId,
+        _id: "dummyRef: " + userId.toString(),
       };
 
       // Checking if the user is not a dummy entry

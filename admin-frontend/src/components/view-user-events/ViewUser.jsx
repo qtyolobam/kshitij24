@@ -12,6 +12,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { GoTrophy } from "react-icons/go";
+import { FaChessKing, FaChessPawn } from "react-icons/fa";
+
 const getVerificationIcon = (status) => {
   switch (status) {
     case "VERIFIED":
@@ -37,7 +39,11 @@ function ViewUser({ user }) {
     <div className="flex flex-col gap-4 w-fit max-h-[700px] text-white p-8 border-[#202020] border-[1px] rounded-lg">
       <div className="user-details flex flex-col gap-2">
         <h1 className="user-id text-2xl font-bold">
-          {user.type === "CC" ? user.ccId : user.ncpId ? user.ncpId : "OTSE"}
+          {user.type === "CC"
+            ? user.ccId
+            : user.ncpId
+            ? user.ncpId
+            : user.otseId}
         </h1>
         <p className="user-email text-[#808080] text-[15px] mb-2">
           {user.email}
@@ -137,55 +143,69 @@ function ViewUser({ user }) {
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="flex flex-col  gap-2">
-                          <div className="team-members">
-                            <Popover>
-                              <PopoverTrigger
-                                className={`border border-[#202020] rounded-lg p-2 ${
-                                  event.teamMembers.includes("dummy")
-                                    ? `bg-red-500`
-                                    : ""
-                                }`}
-                              >
-                                Team Members
-                              </PopoverTrigger>
-                              <PopoverContent
-                                className={`text-white bg-[#090909]`}
-                                align="start"
-                                sideOffset={5}
-                              >
-                                <div className="flex flex-col gap-2 px-7 rounded-lg">
-                                  {event.teamMembers.length !== 0 &&
-                                    event.teamMembers.map((member) => (
-                                      <p>{member}</p>
-                                    ))}
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          <div className="npa-members">
-                            <Popover>
-                              <PopoverTrigger
-                                className={`border border-[#202020] rounded-lg p-2 ${
-                                  event.npaMembers.includes("dummy")
-                                    ? `bg-red-500`
-                                    : ""
-                                }`}
-                              >
-                                NPA Members
-                              </PopoverTrigger>
-                              <PopoverContent
-                                className={`text-white bg-[#090909]`}
-                                align="start"
-                              >
-                                <div className="flex flex-col gap-2 px-7 rounded-lg">
-                                  {event.npaMembers.length !== 0 &&
-                                    event.npaMembers.map((member) => (
-                                      <p>{member}</p>
-                                    ))}
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
+                          {event.teamMembers && (
+                            <div className="team-members">
+                              <div className="border border-[#202020] rounded-lg p-2 mb-2 w-fit flex items-center gap-2">
+                                <FaChessKing className="text-lg text-[#FFD700]" />
+                                Registerer : {event.registerer}{" "}
+                              </div>
+                              <Popover>
+                                <PopoverTrigger
+                                  className={`border border-[#202020] rounded-lg p-2 ${
+                                    event.teamMembers.includes("dummy")
+                                      ? `bg-red-500`
+                                      : ""
+                                  }`}
+                                >
+                                  Team Members
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className={`text-white bg-[#090909] w-fit`}
+                                  align="start"
+                                  sideOffset={5}
+                                >
+                                  <div className="flex flex-col gap-2 px-4 rounded-lg text-sm">
+                                    {event.teamMembers.length !== 0 &&
+                                      event.teamMembers.map((member) => (
+                                        <div className="flex items-center gap-2 w-fit">
+                                          <FaChessPawn className="text-lg" />
+                                          <p>{member}</p>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          )}
+                          {event.npaMembers && (
+                            <div className="npa-members">
+                              <Popover>
+                                <PopoverTrigger
+                                  className={`border border-[#202020] rounded-lg p-2 ${
+                                    event.npaMembers.includes("dummy")
+                                      ? `bg-red-500`
+                                      : ""
+                                  }`}
+                                >
+                                  NPA Members
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className={`text-white bg-[#090909] w-fit`}
+                                  align="start"
+                                >
+                                  <div className="flex flex-col gap-2 px-4 rounded-lg text-sm">
+                                    {event.npaMembers.length !== 0 &&
+                                      event.npaMembers.map((member) => (
+                                        <div className="flex items-center gap-2 w-fit">
+                                          <FaChessPawn className="text-lg" />
+                                          <p>{member}</p>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          )}
 
                           <div className="w-full ml-1 flex items-center gap-5">
                             <p className="flex items-center gap-1">
