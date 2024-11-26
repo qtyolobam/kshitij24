@@ -1276,6 +1276,19 @@ exports.registerForTeamEvent = async (req, res) => {
             phoneNumber: member.phoneNumber,
           });
           if (!newUserThroughCC) {
+            // Converting the pdf to image if it is a pdf
+            if (teamMemberImages[i].mimetype === "application/pdf") {
+              const convertedImage = await convertPdfToImage(
+                teamMemberImages[i]
+              );
+              teamMemberImages[i] = convertedImage;
+            }
+            if (teamMemberGovtIdProof[i].mimetype === "application/pdf") {
+              const convertedImage = await convertPdfToImage(
+                teamMemberGovtIdProof[i]
+              );
+              teamMemberGovtIdProof[i] = convertedImage;
+            }
             // Creating the user through CC
             const idProofARN = await s3Upload(teamMemberImages[i]);
             const idProofType = teamMemberImages[i].mimetype;
@@ -1342,6 +1355,19 @@ exports.registerForTeamEvent = async (req, res) => {
               phoneNumber: member.phoneNumber,
             });
             if (!newUserThroughCC) {
+              // Converting the pdf to image if it is a pdf
+              if (npaMemberImages[i].mimetype === "application/pdf") {
+                const convertedImage = await convertPdfToImage(
+                  npaMemberImages[i]
+                );
+                npaMemberImages[i] = convertedImage;
+              }
+              if (npaMemberGovtIdProof[i].mimetype === "application/pdf") {
+                const convertedImage = await convertPdfToImage(
+                  npaMemberGovtIdProof[i]
+                );
+                npaMemberGovtIdProof[i] = convertedImage;
+              }
               // Creating the user through CC
               const idProofARN = await s3Upload(npaMemberImages[i]);
               const idProofType = npaMemberImages[i].mimetype;
