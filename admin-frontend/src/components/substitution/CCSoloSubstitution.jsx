@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import DialogLoading from "@/components/shared/DialogLoading";
 import { Switch } from "@/components/ui/switch";
+import axios from "axios";
+import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z
   .object({
@@ -97,6 +99,7 @@ const formSchema = z
   .optional();
 
 export default function CCSoloSubstitution({ eventId }) {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const form = useForm({
     resolver: zodResolver(formSchema),
@@ -119,7 +122,7 @@ export default function CCSoloSubstitution({ eventId }) {
     },
   });
 
-  function onSubmit(values) {
+  async function onSubmit(values) {
     try {
       setLoading(true);
       const formattedData = {
@@ -144,11 +147,42 @@ export default function CCSoloSubstitution({ eventId }) {
         };
       }
 
+      const formData = new FormData();
+
+      // Handle nested objects by converting them to JSON strings
+      Object.entries(formattedData).forEach(([key, value]) => {
+        if (value instanceof File) {
+          formData.append(key, value);
+        } else if (typeof value === "object" && value !== null) {
+          formData.append(key, JSON.stringify(value));
+        } else {
+          formData.append(key, value);
+        }
+      });
+
+      await axios.patch(
+        "http://localhost:4534/api/admin/substitute-entries-for-solo",
+        formData
+      );
+
+      setLoading(false);
+      toast({
+        title: "Substitution successful",
+        variant: "destructive",
+        description: "Substituted successfully",
+        className:
+          "text-white text-sm font-semibold bg-[#09090B] outline-none border-[1px] border-[#27272A] focus-visible:ring-1 focus-visible:ring-offset-1 ring-offset-[#353538] focus:border-[#27272A]",
+      });
       console.log(formattedData);
-      setLoading(false);
     } catch (error) {
-      console.log(error);
       setLoading(false);
+      toast({
+        title: "Error substituting",
+        description: error?.response?.data?.error || "Something went wrong",
+        variant: "destructive",
+        className:
+          "text-white text-sm font-semibold bg-[#09090B] outline-none border-[1px] border-red-500 focus-visible:ring-1 focus-visible:ring-offset-1 ring-offset-[#353538] focus:border-red-500",
+      });
     }
   }
 

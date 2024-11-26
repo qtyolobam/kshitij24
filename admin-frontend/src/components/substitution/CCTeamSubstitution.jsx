@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import DialogLoading from "@/components/shared/DialogLoading";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Toaster } from "@/components/ui/toaster";
+import axios from "axios";
 
 const memberSchema = z.object({
   firstName: z.string().min(1, "First Name is required"),
@@ -128,7 +128,7 @@ export default function CCTeamSubstitution({ eventId }) {
     name: "toBeReplacedUser.npaMembers",
   });
 
-  function onSubmit(values) {
+  async function onSubmit(values) {
     try {
       setLoading(true);
 
@@ -208,45 +208,58 @@ export default function CCTeamSubstitution({ eventId }) {
         }
       }
 
-      // Rest of your formatting code remains the same
-      const formattedData = {
-        userId: values.userId,
-        eventId,
-        isDummy: values.isDummy,
-        substituteData: {
-          teamMembers: values.substituteData.teamMembers.map(
-            ({ idProof, govtIdProof, ...member }) => ({
-              firstName: member.firstName,
-              lastName: member.lastName,
-              phoneNumber: member.phoneNumber,
-              email: member.email,
-            })
-          ),
-          npaMembers: values.substituteData.npaMembers.map(
-            ({ idProof, govtIdProof, ...member }) => ({
-              firstName: member.firstName,
-              lastName: member.lastName,
-              phoneNumber: member.phoneNumber,
-              email: member.email,
-            })
-          ),
-        },
+      // Create FormData instance
+      const formData = new FormData();
+
+      // Add basic fields
+      formData.append("userId", values.userId);
+      formData.append("eventId", eventId);
+      formData.append("isDummy", values.isDummy);
+
+      // Handle substitute data
+      const substituteData = {
         teamMembers: values.substituteData.teamMembers.map(
-          (member) => member.idProof
+          ({ idProof, govtIdProof, ...member }) => ({
+            firstName: member.firstName,
+            lastName: member.lastName,
+            phoneNumber: member.phoneNumber,
+            email: member.email,
+          })
         ),
         npaMembers: values.substituteData.npaMembers.map(
-          (member) => member.idProof
-        ),
-        teamMembersGovtIdProof: values.substituteData.teamMembers.map(
-          (member) => member.govtIdProof
-        ),
-        npaMembersGovtIdProof: values.substituteData.npaMembers.map(
-          (member) => member.govtIdProof
+          ({ idProof, govtIdProof, ...member }) => ({
+            firstName: member.firstName,
+            lastName: member.lastName,
+            phoneNumber: member.phoneNumber,
+            email: member.email,
+          })
         ),
       };
+      formData.append("substituteData", JSON.stringify(substituteData));
 
+      // Handle file uploads for team members
+      values.substituteData.teamMembers.forEach((member, index) => {
+        if (member.idProof) {
+          formData.append(`teamMembers`, member.idProof);
+        }
+        if (member.govtIdProof) {
+          formData.append(`teamMembersGovtIdProof`, member.govtIdProof);
+        }
+      });
+
+      // Handle file uploads for NPA members
+      values.substituteData.npaMembers.forEach((member, index) => {
+        if (member.idProof) {
+          formData.append(`npaMembers`, member.idProof);
+        }
+        if (member.govtIdProof) {
+          formData.append(`npaMembersGovtIdProof`, member.govtIdProof);
+        }
+      });
+
+      // Handle replacement data for non-dummy mode
       if (!values.isDummy) {
-        formattedData.toBeReplacedUser = {
+        const toBeReplacedUser = {
           teamMembers: values.toBeReplacedUser.teamMembers.map((member) => ({
             firstName: member.firstName,
             lastName: member.lastName,
@@ -258,24 +271,39 @@ export default function CCTeamSubstitution({ eventId }) {
             phoneNumber: member.phoneNumber,
           })),
         };
+        formData.append("toBeReplacedUser", JSON.stringify(toBeReplacedUser));
       }
 
-      console.log(formattedData);
-      form.reset();
-      toast({
-        title: "Success",
-        description: "Form submitted successfully",
-      });
+      // Make API request with FormData
+      await axios.patch(
+        "http://localhost:4534/api/admin/substitute-entries-for-team",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
       setLoading(false);
+      form.reset();
+      toast({
+        title: "Substitution successful",
+        variant: "destructive",
+        description: "Substituted successfully",
+        className:
+          "text-white text-sm font-semibold bg-[#09090B] outline-none border-[1px] border-[#27272A] focus-visible:ring-1 focus-visible:ring-offset-1 ring-offset-[#353538] focus:border-[#27272A]",
+      });
     } catch (error) {
       console.log(error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Something went wrong. Please try again.",
-      });
       setLoading(false);
+      toast({
+        title: "Error substituting",
+        description: error?.response?.data?.error || "Something went wrong",
+        variant: "destructive",
+        className:
+          "text-white text-sm font-semibold bg-[#09090B] outline-none border-[1px] border-red-500 focus-visible:ring-1 focus-visible:ring-offset-1 ring-offset-[#353538] focus:border-red-500",
+      });
     }
   }
 

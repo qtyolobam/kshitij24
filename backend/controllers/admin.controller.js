@@ -1794,9 +1794,10 @@ exports.substituteEntriesForSolo = async (req, res) => {
     //   toBeReplacedUser { firstName, lastName, phoneNumber } // CC User
     //}
     const { userId, eventId } = req.body;
-    let isDummy = req.body.isDummy === "true" ? true : false;
-    let substituteData = req.body.substituteData;
-    let toBeReplacedUser = req.body.toBeReplacedUser;
+    let isDummy = req.body.isDummy;
+    let substituteData = JSON.parse(req.body.substituteData);
+    let toBeReplacedUser =
+      req.body.toBeReplacedUser && JSON.parse(req.body.toBeReplacedUser);
 
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ error: "Invalid event ID" });
@@ -2083,23 +2084,20 @@ exports.substituteEntriesForTeam = async (req, res) => {
     //                    npaMembers: [ { ncpId } ] }
     //
     const { userId, eventId, isDummy } = req.body;
-    let substituteData = req.body.substituteData;
-    let toBeReplacedUser = req.body.toBeReplacedUser;
+    let substituteData = JSON.parse(req.body.substituteData);
+    let toBeReplacedUser =
+      req.body.toBeReplacedUser && JSON.parse(req.body.toBeReplacedUser);
 
-    // Checking if the userId and eventId are valid
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ error: "Invalid user ID" });
-    }
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ error: "Invalid event ID" });
     }
 
     // Finding the user
     let isNCP = false;
-    let user = await ccUser.findById(userId, { deleted: false });
+    let user = await ccUser.findOne({ ccId: userId, deleted: false });
     if (!user) {
       isNCP = true;
-      user = await ncpUser.findById(userId, { deleted: false });
+      user = await ncpUser.findOne({ ncpId: userId, deleted: false });
     }
 
     // User not found
@@ -2167,7 +2165,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
 
               let newUser = await userThroughCC.findOne({
                 $and: [
-                  { ccId: user.ccId },
+                  { ccId: user._id },
                   {
                     firstName: substituteData.teamMembers[teamCount].firstName,
                   },
@@ -2180,7 +2178,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
               });
               if (!newUser) {
                 newUser = await userThroughCC.create({
-                  ccId: user.ccId,
+                  ccId: user._id,
                   firstName: substituteData.teamMembers[teamCount].firstName,
                   lastName: substituteData.teamMembers[teamCount].lastName,
                   phoneNumber:
@@ -2256,7 +2254,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
 
               let newUser = await userThroughCC.findOne({
                 $and: [
-                  { ccId: user.ccId },
+                  { ccId: user._id },
                   { firstName: substituteData.npaMembers[npaCount].firstName },
                   { lastName: substituteData.npaMembers[npaCount].lastName },
                   {
@@ -2267,7 +2265,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
               });
               if (!newUser) {
                 newUser = await userThroughCC.create({
-                  ccId: user.ccId,
+                  ccId: user._id,
                   firstName: substituteData.npaMembers[npaCount].firstName,
                   lastName: substituteData.npaMembers[npaCount].lastName,
                   phoneNumber: substituteData.npaMembers[npaCount].phoneNumber,
@@ -2363,7 +2361,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
             ) {
               let newUser = await userThroughCC.findOne({
                 $and: [
-                  { ccId: user.ccId },
+                  { ccId: user._id },
                   { firstName: substituteData.teamMembers[i].firstName },
                   { lastName: substituteData.teamMembers[i].lastName },
                   { phoneNumber: substituteData.teamMembers[i].phoneNumber },
@@ -2371,7 +2369,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
               });
               if (!newUser) {
                 newUser = await userThroughCC.create({
-                  ccId: user.ccId,
+                  ccId: user._id,
                   firstName: substituteData.teamMembers[i].firstName,
                   lastName: substituteData.teamMembers[i].lastName,
                   phoneNumber: substituteData.teamMembers[i].phoneNumber,
@@ -2422,7 +2420,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
           for (let i = 0; i < toBeReplacedUser.npaMembers.length; i++) {
             let toBeReplacedUserId = userThroughCC.find({
               $and: [
-                { ccId: user.ccId },
+                { ccId: user._id },
                 { firstName: toBeReplacedUser.npaMembers[i].firstName },
                 { lastName: toBeReplacedUser.npaMembers[i].lastName },
                 { phoneNumber: toBeReplacedUser.npaMembers[i].phoneNumber },
@@ -2441,7 +2439,7 @@ exports.substituteEntriesForTeam = async (req, res) => {
             ) {
               let newUser = await userThroughCC.findOne({
                 $and: [
-                  { ccId: user.ccId },
+                  { ccId: user._id },
                   { firstName: substituteData.npaMembers[i].firstName },
                   { lastName: substituteData.npaMembers[i].lastName },
                   { phoneNumber: substituteData.npaMembers[i].phoneNumber },
@@ -2516,73 +2514,72 @@ exports.substituteEntriesForTeam = async (req, res) => {
         await event.save();
       }
     } else {
-      // Replacing a user
-      const eventWithEntriesToBeReplaced = event.userRegistrations.find(
-        (registration) =>
-          registration.registerer.toString() === user._id.toString()
-      );
-
-      // Replacing the teamMembers
-      if (
-        toBeReplacedUser.teamMembers &&
-        toBeReplacedUser.teamMembers.length > 0
-      ) {
-        for (let i = 0; i < toBeReplacedUser.teamMembers.length; i++) {
-          const toBeReplacedUserId = await ncpUser.findOne({
-            ncpId: toBeReplacedUser.teamMembers[i],
-          });
-          const replacementUserId = await ncpUser.findOne({
-            ncpId: substituteData.teamMembers[i],
-          });
-          if (
-            eventWithEntriesToBeReplaced.teamMembers.includes(
-              toBeReplacedUserId._id.toString()
-            )
-          ) {
-            eventWithEntriesToBeReplaced.teamMembers[
-              eventWithEntriesToBeReplaced.teamMembers.indexOf(
-                toBeReplacedUserId._id.toString()
-              )
-            ] = replacementUserId._id;
-          } else {
-            return res.status(400).json({
-              error:
-                "To be replaced user not found the user's registered list (Team List)",
-            });
-          }
-        }
-      }
-
-      // Replacing the npaMembers
-      if (
-        toBeReplacedUser.npaMembers &&
-        toBeReplacedUser.npaMembers.length > 0
-      ) {
-        for (let i = 0; i < toBeReplacedUser.npaMembers.length; i++) {
-          const toBeReplacedUserId = await ncpUser.findOne({
-            ncpId: toBeReplacedUser.npaMembers[i],
-          });
-          const replacementUserId = await ncpUser.findOne({
-            ncpId: substituteData.npaMembers[i],
-          });
-          if (
-            eventWithEntriesToBeReplaced.npaMembers.includes(
-              toBeReplacedUserId._id.toString()
-            )
-          ) {
-            eventWithEntriesToBeReplaced.npaMembers[
-              eventWithEntriesToBeReplaced.npaMembers.indexOf(
-                toBeReplacedUserId._id.toString()
-              )
-            ] = replacementUserId._id;
-          } else {
-            return res.status(400).json({
-              error:
-                "To be replaced user not found the user's registered list (NPA List)",
-            });
-          }
-        }
-      }
+      // Not being used
+      // // Replacing a user
+      // const eventWithEntriesToBeReplaced = event.userRegistrations.find(
+      //   (registration) =>
+      //     registration.registerer.toString() === user._id.toString()
+      // );
+      // // Replacing the teamMembers
+      // if (
+      //   toBeReplacedUser.teamMembers &&
+      //   toBeReplacedUser.teamMembers.length > 0
+      // ) {
+      //   for (let i = 0; i < toBeReplacedUser.teamMembers.length; i++) {
+      //     const toBeReplacedUserId = await ncpUser.findOne({
+      //       ncpId: toBeReplacedUser.teamMembers[i],
+      //     });
+      //     const replacementUserId = await ncpUser.findOne({
+      //       ncpId: substituteData.teamMembers[i],
+      //     });
+      //     if (
+      //       eventWithEntriesToBeReplaced.teamMembers.includes(
+      //         toBeReplacedUserId._id.toString()
+      //       )
+      //     ) {
+      //       eventWithEntriesToBeReplaced.teamMembers[
+      //         eventWithEntriesToBeReplaced.teamMembers.indexOf(
+      //           toBeReplacedUserId._id.toString()
+      //         )
+      //       ] = replacementUserId._id;
+      //     } else {
+      //       return res.status(400).json({
+      //         error:
+      //           "To be replaced user not found the user's registered list (Team List)",
+      //       });
+      //     }
+      //   }
+      // }
+      // // Replacing the npaMembers
+      // if (
+      //   toBeReplacedUser.npaMembers &&
+      //   toBeReplacedUser.npaMembers.length > 0
+      // ) {
+      //   for (let i = 0; i < toBeReplacedUser.npaMembers.length; i++) {
+      //     const toBeReplacedUserId = await ncpUser.findOne({
+      //       ncpId: toBeReplacedUser.npaMembers[i],
+      //     });
+      //     const replacementUserId = await ncpUser.findOne({
+      //       ncpId: substituteData.npaMembers[i],
+      //     });
+      //     if (
+      //       eventWithEntriesToBeReplaced.npaMembers.includes(
+      //         toBeReplacedUserId._id.toString()
+      //       )
+      //     ) {
+      //       eventWithEntriesToBeReplaced.npaMembers[
+      //         eventWithEntriesToBeReplaced.npaMembers.indexOf(
+      //           toBeReplacedUserId._id.toString()
+      //         )
+      //       ] = replacementUserId._id;
+      //     } else {
+      //       return res.status(400).json({
+      //         error:
+      //           "To be replaced user not found the user's registered list (NPA List)",
+      //       });
+      //     }
+      //   }
+      // }
     }
     // Updating the event
     await event.save();
@@ -3663,7 +3660,7 @@ exports.awardPoints = async (req, res) => {
     // Required Fields:
     // {
     //   userId: String,
-    //   eventId: String,
+    //   eventName: String,
     //   points: Enum String [ "firstPodium", "secondPodium", "thirdPodium",
     //     "qualification", "npr", "npq", "arbitraryPoints" ]
     //   arbitraryPoints: Number ( Only if points is "arbitraryPoints" )
@@ -3672,16 +3669,13 @@ exports.awardPoints = async (req, res) => {
     //   sex: String ( Only if event is Mr. and Ms. Kshitij )
     //   weightCategory: String ( Only if event is MMA )
 
-    const { userId, eventId, points } = req.body;
+    const { userId, eventName, points } = req.body;
     const sex = req.body.sex;
     const weightCategory = req.body.weightCategory;
 
     // Checking if the userId and eventId are valid
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ error: "Invalid user ID" });
-    }
-    if (!mongoose.Types.ObjectId.isValid(eventId)) {
-      return res.status(400).json({ error: "Invalid event ID" });
     }
 
     // Checking if the points are valid
@@ -3711,16 +3705,18 @@ exports.awardPoints = async (req, res) => {
 
     // Finding the event
     let isSolo = true;
-    let event = await soloEvent.findById(eventId);
+    let event = await soloEvent.findOne({ name: eventName, deleted: false });
     if (!event) {
       isSolo = false;
-      event = await teamEvent.findById(eventId);
+      event = await teamEvent.findOne({ name: eventName, deleted: false });
     }
 
     // Event not found
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
     }
+
+    const eventId = event._id;
 
     // Checking if the user was otse for the event
     if (isOtse) {

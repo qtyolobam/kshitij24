@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 const { ccUser, ncpUser, userThroughCC } = require("../models/user.model");
 const { soloEvent, teamEvent } = require("../models/event.model");
 const betModel = require("../models/bet.model");
+const { convertPdfToImage } = require("../utils/apis/pdfToImage");
 // Utils
 const { sendEmailWithRetry } = require("../utils/apis/emailerConfig");
 
@@ -784,6 +785,16 @@ exports.registerForSoloEvent = async (req, res) => {
         }
         userThroughCCData.idProof = req.files.idProof[0];
         userThroughCCData.govtIdProof = req.files.govtIdProof[0];
+        if (userThroughCCData.idProof.mimetype === "application/pdf") {
+          userThroughCCData.idProof = await convertPdfToImage(
+            userThroughCCData.idProof
+          );
+        }
+        if (userThroughCCData.govtIdProof.mimetype === "application/pdf") {
+          userThroughCCData.govtIdProof = await convertPdfToImage(
+            userThroughCCData.govtIdProof
+          );
+        }
         // Checking if the user already exists
         newUserThroughCC = await userThroughCC.findOne({
           ccId: userId,
